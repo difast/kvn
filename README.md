@@ -85,7 +85,7 @@ DOMAIN=<ваш-домен> bash deploy/setup-vps.sh      # идемпотент�
 xray version; systemctl status xray kvn --no-pager
 grep ^XRAY /etc/kvn/kvn.env
 ```
-Опционально: `XRAY_PORT=…` и `REALITY_DEST=<сайт с TLS 1.3 и h2>:443` (по умолчанию `www.microsoft.com:443`) задаются переменными окружения при запуске скрипта.
+Опционально: `XRAY_PORT=…` и `REALITY_DEST=<сайт с TLS 1.3 и h2>:443` задаются переменными окружения при запуске скрипта. По умолчанию сайт-маска подбирается автоматически (`deploy/pick-reality-dest.sh`): сайт с большой цепочкой сертификатов ломает Reality (`www.microsoft.com` присылал 8273 байта, и рукопожатие не завершалось: «handshake did not complete successfully»). Сменить сайт на работающем сервере: `bash deploy/pick-reality-dest.sh` (таблица) и `bash deploy/pick-reality-dest.sh --apply <хост>`.
 
 ## Диагностика VLESS
 

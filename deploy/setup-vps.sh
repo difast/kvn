@@ -3,7 +3,7 @@
 # Run as root from a checkout of the repo:   sudo bash deploy/setup-vps.sh
 # Env: DOMAIN=vpn.example.com (optional; enables HTTPS via Caddy)  SSH_PORT=22  WG_PORT=51820
 #      VPN_SUBNET=10.8.0.0/24  SKIP_SSH_HARDENING=1
-#      XRAY_PORT=8443 (VLESS+Reality, tcp)  REALITY_DEST=www.microsoft.com:443 (a real TLS1.3 site Reality imitates)
+#      XRAY_PORT=8443 (VLESS+Reality, tcp)  REALITY_DEST=host:443 (default: auto-picked from this server by pick-reality-dest.sh)
 # Idempotent: existing WireGuard keys / secrets are never overwritten.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
@@ -11,7 +11,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$(dirname "$HERE")"
 SSH_PORT="${SSH_PORT:-22}"; WG_PORT="${WG_PORT:-51820}"; VPN_SUBNET="${VPN_SUBNET:-10.8.0.0/24}"
-XRAY_PORT="${XRAY_PORT:-8443}"; REALITY_DEST="${REALITY_DEST:-www.microsoft.com:443}"; REALITY_SNI="${REALITY_DEST%:*}"
+XRAY_PORT="${XRAY_PORT:-8443}"; REALITY_DEST="${REALITY_DEST:-}"
 SERVER_ADDR="${VPN_SUBNET%.*}.1/${VPN_SUBNET#*/}"        # 10.8.0.1/24
 WAN_IF="${WAN_IF:-$(ip -4 route show default | awk '{print $5; exit}')}"
 [ -n "$WAN_IF" ] || { echo "cannot detect WAN interface, set WAN_IF"; exit 1; }
@@ -70,6 +70,12 @@ fi
 XRAY_DIR=/usr/local/etc/xray
 install -d -m 755 "$XRAY_DIR"
 if [ ! -f "$XRAY_DIR/reality.pub" ]; then
+  # Reality imitates a real TLS 1.3 + h2 site; one with a big certificate chain breaks it (www.microsoft.com sent 8 KB here).
+  if [ -z "$REALITY_DEST" ]; then
+    REALITY_DEST="$(bash "$HERE/pick-reality-dest.sh" --best 2>/dev/null)" || REALITY_DEST="www.apple.com:443"
+    echo "Reality dest picked: $REALITY_DEST"
+  fi
+  REALITY_SNI="${REALITY_DEST%:*}"
   KEYS="$(xray x25519)"
   # Output labels differ between Xray versions ("Public key:" / "Password (PublicKey):").
   R_PRIV="$(printf '%s\n' "$KEYS" | sed -n 's/^PrivateKey: *//p;s/^Private key: *//p' | head -1)"
@@ -152,7 +158,7 @@ XRAY_APPLY_MODE=xray
 XRAY_BIN=/usr/local/bin/xray
 XRAY_PORT=$XRAY_PORT
 XRAY_HOST=${PUBLIC_IP:-$DOMAIN}
-XRAY_SNI=$REALITY_SNI
+XRAY_SNI=${REALITY_SNI:-www.apple.com}
 XRAY_SHORT_ID=$(cat "$XRAY_DIR/reality.sid")
 XRAY_REALITY_PUBLIC_KEY=$(cat "$XRAY_DIR/reality.pub")
 CONF
