@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KVN — быстрый и приватный VPN</title>
+<meta name="description" content="VPN на WireGuard за 500 ₽ в месяц. Регистрация, оплата и конфигурация за пару минут.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%278%27 fill=%27%233b82f6%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="logo" href="/">K<b>VN</b></a>
+    <a class="btn ghost small" id="nav" href="/auth.html">Войти</a>
+  </header>
+
+  <section class="hero">
+    <h1>Быстрый VPN на <span>WireGuard</span></h1>
+    <p>Зарегистрируйтесь, оплатите и получите личную конфигурацию за пару минут. Без лишних приложений.</p>
+    <a class="btn big" href="/auth.html#register">Подключить VPN</a>
+  </section>
+
+  <section class="grid">
+    <div class="card"><h3>⚡ Высокая скорость</h3><p>Современный протокол WireGuard — минимальные задержки и расход батареи.</p></div>
+    <div class="card"><h3>🔑 Свои ключи</h3><p>Для каждого устройства создаются уникальные ключи. Конфигурацию можно отозвать в любой момент.</p></div>
+    <div class="card"><h3>📱 Любое устройство</h3><p>Windows, macOS, Linux, Android, iPhone — подойдёт любой клиент WireGuard.</p></div>
+  </section>
+
+  <section class="card price">
+    <h3>Тариф «Месяц»</h3>
+    <div class="amount">500 ₽<small> / месяц</small></div>
+    <ul><li>Безлимитный трафик</li><li>Личная конфигурация .conf</li><li>Отзыв ключей в один клик</li></ul>
+    <a class="btn" style="width:100%" href="/auth.html#register">Подключить VPN</a>
+  </section>
+
+  <footer>© KVN</footer>
+</div>
+<script type="module">
+  import { api } from '/js/api.js';
+  if (api.isLoggedIn()) { const n = document.getElementById('nav'); n.textContent = 'Личный кабинет'; n.href = '/dashboard.html'; }
+</script>
+</body>
+</html>
