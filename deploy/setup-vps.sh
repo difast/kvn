@@ -3,7 +3,7 @@
 # Run as root from a checkout of the repo:   sudo bash deploy/setup-vps.sh
 # Env: DOMAIN=vpn.example.com (optional; enables HTTPS via Caddy)  SSH_PORT=22  WG_PORT=51820
 #      VPN_SUBNET=10.8.0.0/24  SKIP_SSH_HARDENING=1
-#      XRAY_PORT=8443 (VLESS+Reality, tcp)  XRAY_MSS=1200 (TCP segment clamp towards VLESS clients)  REALITY_DEST=www.microsoft.com:443 (a real TLS1.3 site Reality imitates)
+#      XRAY_PORT=8443 (VLESS+Reality, tcp)  REALITY_DEST=www.microsoft.com:443 (a real TLS1.3 site Reality imitates)
 # Idempotent: existing WireGuard keys / secrets are never overwritten.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
@@ -11,7 +11,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$(dirname "$HERE")"
 SSH_PORT="${SSH_PORT:-22}"; WG_PORT="${WG_PORT:-51820}"; VPN_SUBNET="${VPN_SUBNET:-10.8.0.0/24}"
-XRAY_PORT="${XRAY_PORT:-8443}"; XRAY_MSS="${XRAY_MSS:-1200}"; REALITY_DEST="${REALITY_DEST:-www.microsoft.com:443}"; REALITY_SNI="${REALITY_DEST%:*}"
+XRAY_PORT="${XRAY_PORT:-8443}"; REALITY_DEST="${REALITY_DEST:-www.microsoft.com:443}"; REALITY_SNI="${REALITY_DEST%:*}"
 SERVER_ADDR="${VPN_SUBNET%.*}.1/${VPN_SUBNET#*/}"        # 10.8.0.1/24
 WAN_IF="${WAN_IF:-$(ip -4 route show default | awk '{print $5; exit}')}"
 [ -n "$WAN_IF" ] || { echo "cannot detect WAN interface, set WAN_IF"; exit 1; }
@@ -55,7 +55,7 @@ CONF
 sysctl --system >/dev/null
 
 echo "==> firewall (nftables), WAN=$WAN_IF"
-sed -e "s#@WAN_IF@#$WAN_IF#g" -e "s#@SSH_PORT@#$SSH_PORT#g" -e "s#@WG_PORT@#$WG_PORT#g" -e "s#@XRAY_PORT@#$XRAY_PORT#g" -e "s#@XRAY_MSS@#$XRAY_MSS#g" -e "s#@VPN_SUBNET@#$VPN_SUBNET#g" \
+sed -e "s#@WAN_IF@#$WAN_IF#g" -e "s#@SSH_PORT@#$SSH_PORT#g" -e "s#@WG_PORT@#$WG_PORT#g" -e "s#@XRAY_PORT@#$XRAY_PORT#g" -e "s#@VPN_SUBNET@#$VPN_SUBNET#g" \
   "$HERE/nftables.conf.tpl" > /etc/nftables.conf
 nft -c -f /etc/nftables.conf                       # validate before applying
 nft -f /etc/nftables.conf

@@ -55,7 +55,7 @@ ns vps wireguard-go wg0 >/dev/null 2>&1; sleep 1
 ns vps ip addr add 10.8.0.1/24 dev wg0
 ns vps wg set wg0 private-key "$TMP/server.key" listen-port 51820
 ns vps ip link set wg0 up
-sed -e 's#@WAN_IF@#v0#g' -e 's#@SSH_PORT@#22#g' -e 's#@WG_PORT@#51820#g' -e 's#@XRAY_PORT@#8443#g' -e 's#@XRAY_MSS@#1200#g' -e 's#@VPN_SUBNET@#10.8.0.0/24#g' "$ROOT/deploy/nftables.conf.tpl" > "$TMP/nft.conf"
+sed -e 's#@WAN_IF@#v0#g' -e 's#@SSH_PORT@#22#g' -e 's#@WG_PORT@#51820#g' -e 's#@XRAY_PORT@#8443#g' -e 's#@VPN_SUBNET@#10.8.0.0/24#g' "$ROOT/deploy/nftables.conf.tpl" > "$TMP/nft.conf"
 ns vps nft -c -f "$TMP/nft.conf" && ns vps nft -f "$TMP/nft.conf" && ok "firewall rules (deploy/nftables.conf.tpl) validated and loaded" || bad "firewall rules failed to load"
 echo "  wg0 listening on: $(ns vps wg show wg0 listen-port)"
 
