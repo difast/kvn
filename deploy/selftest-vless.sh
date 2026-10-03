@@ -23,7 +23,7 @@ if '[' in raw or '](' in raw or ' ' in raw.strip() or not all(k in q for k in ('
     print("      Copy it again with the 'Copy' button in the website cabinet, not from a chat message.")
     sys.exit(2)
 print(f"link: host={u.hostname} port={u.port} sni={q['sni']} fp={q['fp']} flow={q.get('flow')} (uuid hidden)")
-json.dump({"log": {"loglevel": "warning"},
+json.dump({"log": {"loglevel": "info"},
   "inbounds": [{"listen": "127.0.0.1", "port": int(sys.argv[3]), "protocol": "socks", "settings": {"udp": False}}],
   "outbounds": [{"protocol": "vless", "settings": {"vnext": [{"address": u.hostname, "port": u.port, "users": [
       {"id": u.username, "encryption": "none", "flow": q.get('flow', '')}]}]},
@@ -52,6 +52,7 @@ echo "== 3. download speed through VLESS"
 SP="$(via -m 40 -o /dev/null -w '%{speed_download}' "$SPEED_URL")"; RC=$?
 if [ $RC -eq 0 ]; then echo "PASS  $(python3 -c "print(f'{float(\"$SP\")*8/1e6:.1f} Mbit/s')")"; else echo "FAIL  download failed (curl exit $RC)"; FAILS=$((FAILS+1)); fi
 
+if [ "$FAILS" != 0 ]; then echo; echo "--- client log (errors):"; grep -iE "fail|error|reality|handshake|timeout|refused|dial" "$TMP/xray.log" | sort | uniq -c | sort -rn | head -6 | cut -c1-300; fi
 echo; if [ "$FAILS" = 0 ]; then echo "RESULT: the VLESS server works. If your phone is slow, the cause is the phone's network path or the app, not the server."
 else echo "RESULT: $FAILS check(s) failed: the problem is on the server side (see above)."; fi
 [ "$FAILS" = 0 ]
