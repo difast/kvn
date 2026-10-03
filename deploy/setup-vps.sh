@@ -27,7 +27,7 @@ fi
 echo "==> WireGuard (wg0, $SERVER_ADDR, udp/$WG_PORT)"
 install -d -m 700 /etc/wireguard
 if [ ! -f /etc/wireguard/wg0.conf ]; then
-  umask 077
+  (umask 077
   wg genkey > /etc/wireguard/server.key           # server PRIVATE key: root-only, never read by the API
   wg pubkey < /etc/wireguard/server.key > /etc/wireguard/server.pub
   cat > /etc/wireguard/wg0.conf <<CONF
@@ -38,6 +38,7 @@ PrivateKey = $(cat /etc/wireguard/server.key)
 # No [Peer] blocks and no SaveConfig: peers are owned by the API, which re-adds them
 # (reconcile) after every restart of this interface.
 CONF
+  )
 fi
 chmod 600 /etc/wireguard/wg0.conf /etc/wireguard/server.key
 systemctl enable --now wg-quick@wg0
@@ -87,10 +88,11 @@ install -d -o root -g root /opt/kvn
 rsync -a --delete --exclude node_modules --exclude data --exclude .git "$SRC/backend" "$SRC/frontend" /opt/kvn/
 (cd /opt/kvn/backend && npm ci --omit=dev --silent)
 chown -R root:root /opt/kvn
+chmod -R u=rwX,go=rX /opt/kvn   # readable by the unprivileged 'kvn' user
 install -d -m 700 -o kvn -g kvn /var/lib/kvn
 install -d -m 755 /etc/kvn
 if [ ! -f /etc/kvn/kvn.env ]; then
-  umask 077
+  (umask 077
   cat > /etc/kvn/kvn.env <<CONF
 NODE_ENV=production
 PORT=3000
@@ -109,6 +111,7 @@ WG_SERVER_PUBLIC_KEY=$(cat /etc/wireguard/server.pub)
 WG_SERVER_REGION=EU
 FRONTEND_URL=https://${DOMAIN:-CHANGE_ME}
 CONF
+  )
   chmod 600 /etc/kvn/kvn.env
 fi
 install -m 644 "$HERE/kvn.service" /etc/systemd/system/kvn.service
