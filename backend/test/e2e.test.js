@@ -184,6 +184,7 @@ test('VLESS: needs subscription, issues a valid reality link, revoke/cancel/owne
   assert.equal(url.searchParams.get('security'), 'reality');
   assert.equal(url.searchParams.get('pbk'), 'PUBKEY_abc-DEF_123');
   assert.equal(url.searchParams.get('flow'), 'xtls-rprx-vision');
+  assert.equal(url.searchParams.get('fp'), 'ios');
   assert.ok(!db.prepare('SELECT uuid_enc FROM vless_accounts').get().uuid_enc.includes(url.username));
 
   const other = await call('/auth/register', { method: 'POST', body: { email: 'v2@example.com', password: 'vless-password-2' } });

@@ -77,7 +77,7 @@ export function createVlessService({ db, config, subscriptions }) {
   function buildLink(a) {
     const s = serverOf(a.server_id);
     const q = new URLSearchParams({
-      encryption: 'none', flow: s.vless_flow, security: 'reality', sni: s.vless_sni, fp: 'chrome',
+      encryption: 'none', flow: s.vless_flow, security: 'reality', sni: s.vless_sni, fp: config.vless.fingerprint,
       pbk: s.vless_public_key, sid: s.vless_short_id, type: 'tcp',
     });
     return `vless://${decrypt(key, a.uuid_enc)}@${s.vless_host}:${s.vless_port}?${q}#${encodeURIComponent(`KVN ${s.region}`)}`;

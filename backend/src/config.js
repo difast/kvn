@@ -71,6 +71,10 @@ export const config = {
     apiAddr: env.XRAY_API || '127.0.0.1:10085',
     inboundTag: env.XRAY_INBOUND_TAG || 'vless-in',
     maxAccountsPerUser: num(env.VLESS_MAX_ACCOUNTS_PER_USER, 1),
+    // uTLS fingerprint put into issued links. 'chrome' sends a 1.8 KB ClientHello (post-quantum key share) that is
+    // split into two TCP packets; some mobile networks drop the 2nd one and every connection stalls.
+    // 'ios' is 517 bytes = one packet (measured with Xray 26.3.27).
+    fingerprint: env.XRAY_FINGERPRINT || 'ios',
     // Public Reality parameters of the seed server. Empty XRAY_REALITY_PUBLIC_KEY = VLESS disabled.
     // (The Reality PRIVATE key lives only in Xray's own config on the VPS.)
     seedServer: {
