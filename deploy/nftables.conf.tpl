@@ -16,6 +16,9 @@ table inet filter {
     tcp dport @SSH_PORT@ ct state new meter ssh4 { ip saddr limit rate 6/minute burst 10 packets } accept
     tcp dport @SSH_PORT@ ct state new meter ssh6 { ip6 saddr limit rate 6/minute burst 10 packets } accept
 
+    # Clamp the segment size the server uses towards VLESS clients (MSS of the incoming SYN). Some mobile networks
+    # silently drop full-size packets (path-MTU black hole): handshakes and big downloads then stall halfway.
+    tcp dport @XRAY_PORT@ tcp flags & (syn|rst) == syn tcp option maxseg size set @XRAY_MSS@
     udp dport @WG_PORT@ accept      # WireGuard
     tcp dport @XRAY_PORT@ accept    # VLESS + Reality (Xray)
     tcp dport { 80, 443 } accept    # web + API behind Caddy (HTTPS)
