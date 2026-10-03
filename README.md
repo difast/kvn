@@ -67,9 +67,28 @@ DOMAIN=vpn.example.com sudo -E bash deploy/setup-vps.sh      # DOMAIN необя
 **Peer создаётся** при выдаче профиля: API генерирует пару ключей и preshared key, берёт свободный IP из пула (10.8.0.2…), сохраняет ключи в БД (зашифрованно) и делает `wg set wg0 peer <pub> preshared-key <tmp-file 0600> allowed-ips 10.8.0.X/32`.
 **Peer удаляется** (`wg set wg0 peer <pub> remove`) при отзыве, отмене подписки (`POST /api/subscription/cancel`) и по истечении срока. Это делает `reconcile()`: раз в `VPN_RECONCILE_INTERVAL_SEC` (30 с) и сразу после каждого изменения он сверяет желаемое состояние БД с живым `wg show wg0 peers`. Поэтому после перезапуска `wg0` или перезагрузки VPS пиры возвращаются сами. Peers, которых нет в БД, не трогаются.
 
+## VLESS + Reality (Happ, INCY, v2rayN, Hiddify…)
+
+Рядом с WireGuard работает Xray (VLESS + Reality, TCP `XRAY_PORT`, по умолчанию 8443). `setup-vps.sh` сам ставит Xray, генерирует ключи Reality, пишет `/usr/local/etc/xray/config.json` из `deploy/xray-config.json.tpl` (приватный ключ Reality остаётся только там) и дописывает `XRAY_*` в `/etc/kvn/kvn.env`. API знает только **публичный** ключ.
+
+- Пользователи добавляются/удаляются в работающий Xray через его gRPC API (`xray api adu/rmu/inbounduser`, только 127.0.0.1:10085); перезапуск Xray не нужен. `reconcile()` раз в 30 с сверяет БД с `inbounduser`, поэтому после перезапуска Xray пользователи возвращаются сами.
+- UUID пользователя хранится в БД зашифрованно; выдаётся только в ссылке `vless://…` (`GET /api/vless/accounts/:id/link`). Срок, отзыв и отмена подписки работают так же, как у WireGuard.
+- Клиентам заблокирован доступ к частным сетям (`geoip:private`), логи доступа выключены.
+- API: `GET/POST /api/vless/accounts`, `GET /api/vless/accounts/:id/link`, `POST /api/vless/accounts/:id/revoke`; `/api/me` отдаёт `protocols.vless`.
+
+**Как включить VLESS на сервере** (уже установленный VPS):
+```bash
+cd ~/kvn && git pull
+DOMAIN=<ваш-домен> bash deploy/setup-vps.sh      # идемпотентно: ключи/секреты/пользователи не трогает
+# если у сервера есть внешний файрвол в панели хостинга — откройте TCP 8443
+xray version; systemctl status xray kvn --no-pager
+grep ^XRAY /etc/kvn/kvn.env
+```
+Опционально: `XRAY_PORT=…` и `REALITY_DEST=<сайт с TLS 1.3 и h2>:443` (по умолчанию `www.microsoft.com:443`) задаются переменными окружения при запуске скрипта.
+
 ## Проверка реального соединения
 
-`sudo bash deploy/lab/run.sh` — стенд из трёх network namespace (клиент / VPS / «интернет») с настоящими WireGuard-туннелями, NAT и боевым набором правил nftables; API работает в `WG_APPLY_MODE=wg`. Проверяет: регистрация → оплата → `.conf` → импорт в WireGuard-клиент (`wg-quick up`) → handshake → смена внешнего IP → доступ в сеть → отзыв / отмена / истечение → доступ пропал; перезапуск `wg0`; безопасность. Нужны root, `iproute2`, `wireguard-tools`, `nftables`, `iputils-ping` и `wireguard-go` (если в ядре нет WireGuard).
+`sudo bash deploy/lab/run.sh` — стенд из трёх network namespace (клиент / VPS / «интернет») с настоящими WireGuard-туннелями, NAT и боевым набором правил nftables; API работает в `WG_APPLY_MODE=wg`. Проверяет: регистрация → оплата → `.conf` → импорт в WireGuard-клиент (`wg-quick up`) → handshake → смена внешнего IP → доступ в сеть → отзыв / отмена / истечение → доступ пропал; перезапуск `wg0`; то же для VLESS с настоящими Xray-сервером и Xray-клиентом (ссылка из API превращается в клиентский конфиг); безопасность. Нужен бинарь `xray` (и `geoip.dat` в `XRAY_LOCATION_ASSET`). Нужны root, `iproute2`, `wireguard-tools`, `nftables`, `iputils-ping` и `wireguard-go` (если в ядре нет WireGuard).
 
 ## Production-чеклист
 

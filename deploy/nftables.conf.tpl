@@ -17,6 +17,7 @@ table inet filter {
     tcp dport @SSH_PORT@ ct state new meter ssh6 { ip6 saddr limit rate 6/minute burst 10 packets } accept
 
     udp dport @WG_PORT@ accept      # WireGuard
+    tcp dport @XRAY_PORT@ accept    # VLESS + Reality (Xray)
     tcp dport { 80, 443 } accept    # web + API behind Caddy (HTTPS)
     # Everything else, including WireGuard clients talking to the server itself: dropped.
   }

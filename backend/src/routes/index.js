@@ -10,7 +10,7 @@ const token = z.string().min(10).max(512);
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 
-export function createRouter({ auth, subscriptions, payments, vpn, limiters }) {
+export function createRouter({ auth, subscriptions, payments, vpn, vless, reconcileAll, limiters }) {
   const r = Router();
   const guard = requireAuth(auth);
 
@@ -50,12 +50,13 @@ export function createRouter({ auth, subscriptions, payments, vpn, limiters }) {
       user: { id: req.user.id, email: req.user.email, createdAt: req.user.created_at },
       subscription: subscriptions.status(req.user.id),
       vpnServers: vpn.servers(),
+      protocols: { wireguard: true, vless: vless.available() },
     });
   });
 
   r.post('/subscription/cancel', guard, wrap(async (req, res) => {
     subscriptions.cancel(req.user.id);
-    await vpn.reconcile(); // peers are removed from the server before we answer
+    await reconcileAll(); // peers / users are removed from the servers before we answer
     res.json({ subscription: subscriptions.status(req.user.id) });
   }));
 
@@ -92,6 +93,21 @@ export function createRouter({ auth, subscriptions, payments, vpn, limiters }) {
     res.json({ profile: await vpn.revoke(req.user.id, req.params.id) });
   }));
   r.use('/vpn', v);
+
+  // ---- VLESS + Reality (Happ, INCY, v2rayN, ...) ----
+  const x = Router();
+  x.use(guard);
+  x.get('/accounts', (req, res) => res.json({ accounts: vless.list(req.user.id) }));
+  x.post('/accounts', validate(z.object({ name: z.string().trim().min(1).max(64).default('My device') })), wrap(async (req, res) => {
+    res.status(201).json({ account: await vless.create(req.user.id, req.body.name) });
+  }));
+  x.get('/accounts/:id/link', validate(idParam, 'params'), (req, res) => {
+    res.set({ 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }).send(vless.link(req.user.id, req.params.id));
+  });
+  x.post('/accounts/:id/revoke', validate(idParam, 'params'), wrap(async (req, res) => {
+    res.json({ account: await vless.revoke(req.user.id, req.params.id) });
+  }));
+  r.use('/vless', x);
 
   return r;
 }

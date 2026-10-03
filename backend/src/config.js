@@ -64,6 +64,24 @@ export const config = {
       webhookSecret: env.SBER_WEBHOOK_SECRET || '',
     },
   },
+  vless: {
+    // 'none' = only record accounts in the DB (dev/CI); 'xray' = manage users via the local Xray gRPC API.
+    applyMode: env.XRAY_APPLY_MODE || 'none',
+    bin: env.XRAY_BIN || 'xray',
+    apiAddr: env.XRAY_API || '127.0.0.1:10085',
+    inboundTag: env.XRAY_INBOUND_TAG || 'vless-in',
+    maxAccountsPerUser: num(env.VLESS_MAX_ACCOUNTS_PER_USER, 1),
+    // Public Reality parameters of the seed server. Empty XRAY_REALITY_PUBLIC_KEY = VLESS disabled.
+    // (The Reality PRIVATE key lives only in Xray's own config on the VPS.)
+    seedServer: {
+      host: env.XRAY_HOST || '',
+      port: num(env.XRAY_PORT, 8443),
+      publicKey: env.XRAY_REALITY_PUBLIC_KEY || '',
+      shortId: env.XRAY_SHORT_ID || '',
+      sni: env.XRAY_SNI || 'www.microsoft.com',
+      flow: env.XRAY_FLOW || 'xtls-rprx-vision',
+    },
+  },
   vpn: {
     // 'none' = only record peers in the DB (dev); 'wg' = run `wg set` on this host.
     maxProfilesPerUser: num(env.VPN_MAX_PROFILES_PER_USER, 1),

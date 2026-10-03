@@ -3,21 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Вход — KVN</title>
+<title>Вход и регистрация — KVN</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%278%27 fill=%27%233b82f6%27/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-<div class="wrap">
-  <header class="top"><a class="logo" href="/">K<b>VN</b></a></header>
-  <div class="card narrow">
-    <div class="tabs"><button id="t-register" type="button">Регистрация</button><button id="t-login" type="button">Вход</button></div>
+<header class="top"><div class="wrap"><a class="logo" href="/">K<b>VN</b></a><a class="btn ghost small" href="/">← На главную</a></div></header>
+<div class="wrap auth">
+  <aside class="auth-side">
+    <h1>Подключитесь к VPN <span class="grad">за пару минут</span></h1>
+    <p style="color:var(--muted);margin:0">Создайте аккаунт, оплатите тариф и получите личную конфигурацию с инструкцией.</p>
+    <ul><li>Регистрация занимает меньше минуты</li><li>500 ₽ за 30 дней, без автосписаний</li><li>WireGuard и VLESS в одной подписке</li></ul>
+  </aside>
+  <div class="card auth-card">
+    <div class="tabs" role="tablist"><button id="t-register" type="button" role="tab">Регистрация</button><button id="t-login" type="button" role="tab">Вход</button></div>
     <form id="form" novalidate>
-      <label>Email<input id="email" type="email" autocomplete="email" inputmode="email" required></label>
-      <label>Пароль<input id="password" type="password" minlength="8" maxlength="128" required></label>
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="name@example.com" required>
+        <div class="hint" id="email-hint"></div>
+      </div>
+      <div class="field">
+        <label for="password">Пароль</label>
+        <div class="input-wrap">
+          <input id="password" type="password" maxlength="128" placeholder="Минимум 8 символов" required>
+          <button class="toggle" id="toggle" type="button" aria-label="Показать пароль">Показать</button>
+        </div>
+        <div class="meter" id="meter" hidden><i></i></div>
+        <div class="hint" id="pw-hint"></div>
+      </div>
       <div class="msg" id="msg" role="alert"></div>
-      <button class="btn" id="submit" type="submit"></button>
-      <a id="forgot" href="#" style="text-align:center;font-size:14px">Забыли пароль?</a>
+      <button class="btn block" id="submit" type="submit"></button>
+      <div class="small-link"><a id="forgot" href="#">Забыли пароль?</a></div>
     </form>
   </div>
 </div>

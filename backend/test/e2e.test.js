@@ -4,7 +4,10 @@ import { createApp } from '../src/app.js';
 import { config as base } from '../src/config.js';
 
 let server, url, db;
-const config = { ...base, dbPath: ':memory:', rateLimit: { ...base.rateLimit, loginMax: 5 } };
+const config = {
+  ...base, dbPath: ':memory:', rateLimit: { ...base.rateLimit, loginMax: 5 },
+  vless: { ...base.vless, seedServer: { host: 'vpn.test', port: 8443, publicKey: 'PUBKEY_abc-DEF_123', shortId: '0123456789abcdef', sni: 'www.microsoft.com', flow: 'xtls-rprx-vision' } },
+};
 
 before(async () => {
   const mails = (globalThis.__mails = []);
@@ -158,4 +161,39 @@ test('cancelling the subscription revokes VPN access immediately', async () => {
   const c = await call('/subscription/cancel', { method: 'POST', token: t });
   assert.equal(c.data.subscription.active, false);
   assert.equal((await call(`/vpn/profiles/${pr.id}/config`, { token: t })).res.status, 402);
+});
+
+test('VLESS: needs subscription, issues a valid reality link, revoke/cancel/ownership', async () => {
+  const u = await call('/auth/register', { method: 'POST', body: { email: 'v@example.com', password: 'vless-password-1' } });
+  const t = u.data.accessToken;
+  assert.equal((await call('/me', { token: t })).data.protocols.vless, true);
+  assert.equal((await call('/vless/accounts', { method: 'POST', body: {}, token: t })).res.status, 402);
+  await call('/payments', { method: 'POST', body: {}, token: t });
+  const c = await call('/vless/accounts', { method: 'POST', body: { name: 'Phone' }, token: t });
+  assert.equal(c.res.status, 201);
+  assert.ok(!JSON.stringify(c.data).includes('uuid'));
+  const acc = c.data.account;
+  assert.equal((await call('/vless/accounts', { method: 'POST', body: {}, token: t })).res.status, 409);
+
+  const l = await call(`/vless/accounts/${acc.id}/link`, { token: t });
+  assert.equal(l.res.status, 200);
+  const url = new URL(l.data);
+  assert.equal(url.protocol, 'vless:');
+  assert.match(url.username, /^[0-9a-f-]{36}$/);
+  assert.equal(url.host, 'vpn.test:8443');
+  assert.equal(url.searchParams.get('security'), 'reality');
+  assert.equal(url.searchParams.get('pbk'), 'PUBKEY_abc-DEF_123');
+  assert.equal(url.searchParams.get('flow'), 'xtls-rprx-vision');
+  assert.ok(!db.prepare('SELECT uuid_enc FROM vless_accounts').get().uuid_enc.includes(url.username));
+
+  const other = await call('/auth/register', { method: 'POST', body: { email: 'v2@example.com', password: 'vless-password-2' } });
+  assert.equal((await call(`/vless/accounts/${acc.id}/link`, { token: other.data.accessToken })).res.status, 404);
+  assert.equal((await call(`/vless/accounts/${acc.id}/link`)).res.status, 401);
+
+  assert.equal((await call(`/vless/accounts/${acc.id}/revoke`, { method: 'POST', token: t })).data.account.status, 'revoked');
+  assert.equal((await call(`/vless/accounts/${acc.id}/link`, { token: t })).res.status, 410);
+
+  const n = (await call('/vless/accounts', { method: 'POST', body: {}, token: t })).data.account;
+  await call('/subscription/cancel', { method: 'POST', token: t });
+  assert.equal((await call(`/vless/accounts/${n.id}/link`, { token: t })).res.status, 402);
 });

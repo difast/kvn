@@ -11,13 +11,20 @@ import { createAuthService } from './services/auth.js';
 import { createSubscriptionService } from './services/subscriptions.js';
 import { createPaymentService } from './services/payments/index.js';
 import { createVpnService } from './services/vpn/index.js';
+import { createVlessService } from './services/vpn/vless.js';
 import { createLimiters } from './middleware/rateLimit.js';
 import { createRouter } from './routes/index.js';
 
 export function createApp({ config = defaultConfig, db = openDb(config.dbPath), mailer = consoleMailer } = {}) {
-  const vpnRef = {};
-  const subscriptions = createSubscriptionService({ db, onExtended: (u, e) => vpnRef.svc.extendProfiles(u, e) });
-  const vpn = (vpnRef.svc = createVpnService({ db, config, subscriptions }));
+  const refs = {};
+  // Subscription changes (renewal / cancel) propagate to every protocol's profiles.
+  const subscriptions = createSubscriptionService({
+    db,
+    onExtended: (u, e) => { refs.vpn.extendProfiles(u, e); refs.vless.extendAccounts(u, e); },
+  });
+  const vpn = (refs.vpn = createVpnService({ db, config, subscriptions }));
+  const vless = (refs.vless = createVlessService({ db, config, subscriptions }));
+  const reconcileAll = () => Promise.all([vpn.reconcile(), vless.reconcile()]);
   const auth = createAuthService({ db, config, mailer });
   const payments = createPaymentService({ db, config, subscriptions });
 
@@ -33,7 +40,7 @@ export function createApp({ config = defaultConfig, db = openDb(config.dbPath), 
   app.use(express.json({ limit: '10kb' }));
 
   const limiters = createLimiters(config);
-  app.use('/api', limiters.api, createRouter({ auth, subscriptions, payments, vpn, limiters }));
+  app.use('/api', limiters.api, createRouter({ auth, subscriptions, payments, vpn, vless, reconcileAll, limiters }));
 
   // Optional: serve the static frontend from the same process (single-service deploys).
   const webDir = path.resolve(config.frontendDir);
@@ -60,5 +67,5 @@ export function createApp({ config = defaultConfig, db = openDb(config.dbPath), 
     res.status(500).json({ error: { code: 'internal', message: 'Внутренняя ошибка' } });
   });
 
-  return { app, db, vpn };
+  return { app, db, vpn, vless, reconcileAll };
 }

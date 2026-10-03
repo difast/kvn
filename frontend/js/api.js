@@ -61,6 +61,10 @@ export const api = {
   createProfile: (name) => request('/vpn/profiles', { method: 'POST', body: { name } }),
   revokeProfile: (id) => request(`/vpn/profiles/${id}/revoke`, { method: 'POST' }),
   config: (id) => request(`/vpn/profiles/${id}/config`, {}, true),
+  vlessAccounts: () => request('/vless/accounts'),
+  createVless: (name) => request('/vless/accounts', { method: 'POST', body: { name } }),
+  revokeVless: (id) => request(`/vless/accounts/${id}/revoke`, { method: 'POST' }),
+  vlessLink: (id) => request(`/vless/accounts/${id}/link`, {}, true),
 };
 
 export const $ = (s) => document.querySelector(s);
@@ -69,3 +73,15 @@ export function flash(el, text, kind = 'err') {
   el.className = `msg show ${kind}`;
 }
 export const fmtDate = (iso) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+
+// Show/hide password button (<button id="toggle"> next to <input id="password">).
+export function bindPasswordToggle() {
+  const t = $('#toggle'), i = $('#password');
+  t.addEventListener('click', () => {
+    const show = i.type === 'password';
+    i.type = show ? 'text' : 'password';
+    t.textContent = show ? 'Скрыть' : 'Показать';
+    t.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+    i.focus();
+  });
+}

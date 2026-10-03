@@ -3,6 +3,7 @@
 # Run as root from a checkout of the repo:   sudo bash deploy/setup-vps.sh
 # Env: DOMAIN=vpn.example.com (optional; enables HTTPS via Caddy)  SSH_PORT=22  WG_PORT=51820
 #      VPN_SUBNET=10.8.0.0/24  SKIP_SSH_HARDENING=1
+#      XRAY_PORT=8443 (VLESS+Reality, tcp)  REALITY_DEST=www.microsoft.com:443 (a real TLS1.3 site Reality imitates)
 # Idempotent: existing WireGuard keys / secrets are never overwritten.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
@@ -10,6 +11,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SRC="$(dirname "$HERE")"
 SSH_PORT="${SSH_PORT:-22}"; WG_PORT="${WG_PORT:-51820}"; VPN_SUBNET="${VPN_SUBNET:-10.8.0.0/24}"
+XRAY_PORT="${XRAY_PORT:-8443}"; REALITY_DEST="${REALITY_DEST:-www.microsoft.com:443}"; REALITY_SNI="${REALITY_DEST%:*}"
 SERVER_ADDR="${VPN_SUBNET%.*}.1/${VPN_SUBNET#*/}"        # 10.8.0.1/24
 WAN_IF="${WAN_IF:-$(ip -4 route show default | awk '{print $5; exit}')}"
 [ -n "$WAN_IF" ] || { echo "cannot detect WAN interface, set WAN_IF"; exit 1; }
@@ -53,11 +55,41 @@ CONF
 sysctl --system >/dev/null
 
 echo "==> firewall (nftables), WAN=$WAN_IF"
-sed -e "s#@WAN_IF@#$WAN_IF#g" -e "s#@SSH_PORT@#$SSH_PORT#g" -e "s#@WG_PORT@#$WG_PORT#g" -e "s#@VPN_SUBNET@#$VPN_SUBNET#g" \
+sed -e "s#@WAN_IF@#$WAN_IF#g" -e "s#@SSH_PORT@#$SSH_PORT#g" -e "s#@WG_PORT@#$WG_PORT#g" -e "s#@XRAY_PORT@#$XRAY_PORT#g" -e "s#@VPN_SUBNET@#$VPN_SUBNET#g" \
   "$HERE/nftables.conf.tpl" > /etc/nftables.conf
 nft -c -f /etc/nftables.conf                       # validate before applying
 nft -f /etc/nftables.conf
 systemctl enable nftables
+
+echo "==> Xray (VLESS + Reality on tcp/$XRAY_PORT)"
+if ! command -v xray >/dev/null; then
+  curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh -o /tmp/xray-install.sh
+  bash /tmp/xray-install.sh install
+  rm -f /tmp/xray-install.sh
+fi
+XRAY_DIR=/usr/local/etc/xray
+install -d -m 755 "$XRAY_DIR"
+if [ ! -f "$XRAY_DIR/reality.pub" ]; then
+  KEYS="$(xray x25519)"
+  # Output labels differ between Xray versions ("Public key:" / "Password (PublicKey):").
+  R_PRIV="$(printf '%s\n' "$KEYS" | sed -n 's/^PrivateKey: *//p;s/^Private key: *//p' | head -1)"
+  R_PUB="$(printf '%s\n' "$KEYS" | sed -n 's/^Password (PublicKey): *//p;s/^PublicKey: *//p;s/^Public key: *//p' | head -1)"
+  [ -n "$R_PRIV" ] && [ -n "$R_PUB" ] || { echo "cannot parse 'xray x25519' output" >&2; exit 1; }
+  R_SID="$(openssl rand -hex 8)"
+  (umask 077
+   sed -e "s#@XRAY_PORT@#$XRAY_PORT#g" -e "s#@REALITY_DEST@#$REALITY_DEST#g" -e "s#@REALITY_SNI@#$REALITY_SNI#g" \
+       -e "s#@REALITY_PRIVATE_KEY@#$R_PRIV#g" -e "s#@REALITY_SHORT_ID@#$R_SID#g" "$HERE/xray-config.json.tpl" > "$XRAY_DIR/config.json"
+   printf '%s' "$R_PUB" > "$XRAY_DIR/reality.pub"; printf '%s' "$R_SID" > "$XRAY_DIR/reality.sid")
+  chmod 644 "$XRAY_DIR/reality.pub" "$XRAY_DIR/reality.sid"
+fi
+xray run -test -c "$XRAY_DIR/config.json" >/dev/null
+# The config holds the Reality private key: readable by the xray service user only.
+XRAY_USER="$(systemctl show -p User --value xray 2>/dev/null)"; XRAY_USER="${XRAY_USER:-nobody}"
+chown "root:$(id -gn "$XRAY_USER")" "$XRAY_DIR/config.json"; chmod 640 "$XRAY_DIR/config.json"
+if ! runuser -u "$XRAY_USER" -- test -r "$XRAY_DIR/config.json"; then
+  echo "!! $XRAY_USER cannot read the config; falling back to mode 644" >&2; chmod 644 "$XRAY_DIR/config.json"
+fi
+systemctl enable xray >/dev/null 2>&1; systemctl restart xray
 
 echo "==> fail2ban (sshd)"
 cat > /etc/fail2ban/jail.d/kvn-sshd.conf <<CONF
@@ -114,6 +146,17 @@ CONF
   )
   chmod 600 /etc/kvn/kvn.env
 fi
+if ! grep -q '^XRAY_APPLY_MODE=' /etc/kvn/kvn.env; then
+  cat >> /etc/kvn/kvn.env <<CONF
+XRAY_APPLY_MODE=xray
+XRAY_BIN=/usr/local/bin/xray
+XRAY_PORT=$XRAY_PORT
+XRAY_HOST=${PUBLIC_IP:-$DOMAIN}
+XRAY_SNI=$REALITY_SNI
+XRAY_SHORT_ID=$(cat "$XRAY_DIR/reality.sid")
+XRAY_REALITY_PUBLIC_KEY=$(cat "$XRAY_DIR/reality.pub")
+CONF
+fi
 install -m 644 "$HERE/kvn.service" /etc/systemd/system/kvn.service
 systemctl daemon-reload
 systemctl enable --now kvn
@@ -129,4 +172,5 @@ fi
 echo
 echo "Done. Server public key: $(cat /etc/wireguard/server.pub)"
 echo "Endpoint in configs:     ${DOMAIN:-$PUBLIC_IP}:$WG_PORT"
-echo "Check:  wg show wg0 | systemctl status kvn | curl -s localhost:3000/api/health"
+echo "VLESS+Reality: tcp/$XRAY_PORT, public key $(cat "$XRAY_DIR/reality.pub"), short id $(cat "$XRAY_DIR/reality.sid")"
+echo "Check:  wg show wg0 ; systemctl status kvn xray ; curl -s localhost:3000/api/health"
