@@ -17,6 +17,11 @@ import sys, json
 from urllib.parse import urlparse, parse_qs
 u = urlparse(sys.argv[1].strip()); q = {k: v[0] for k, v in parse_qs(u.query).items()}
 assert u.scheme == 'vless' and q.get('security') == 'reality', 'not a vless+reality link'
+raw = sys.argv[1]
+if '[' in raw or '](' in raw or ' ' in raw.strip() or not all(k in q for k in ('sni', 'fp', 'pbk', 'sid')):
+    print("FAIL: the link is corrupted (chat/markdown turned part of it into a [text](url) link or cut it).")
+    print("      Copy it again with the 'Copy' button in the website cabinet, not from a chat message.")
+    sys.exit(2)
 print(f"link: host={u.hostname} port={u.port} sni={q['sni']} fp={q['fp']} flow={q.get('flow')} (uuid hidden)")
 json.dump({"log": {"loglevel": "warning"},
   "inbounds": [{"listen": "127.0.0.1", "port": int(sys.argv[3]), "protocol": "socks", "settings": {"udp": False}}],
