@@ -6,4 +6,4 @@ app.listen(config.port, () => console.log(`[api] listening on :${config.port} (p
 
 // Expire/revoke peers on the real server and retry failed applies.
 vpn.reconcile();
-setInterval(() => vpn.reconcile(), 60_000).unref();
+setInterval(() => vpn.reconcile(), config.vpn.reconcileIntervalSec * 1000).unref();

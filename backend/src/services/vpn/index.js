@@ -60,22 +60,25 @@ export function createVpnService({ db, config, subscriptions }) {
     throw new HttpError(503, 'no_capacity', 'На сервере закончились адреса');
   }
 
-  // Bring the real server in line with the DB. Safe to call repeatedly (also run on a timer).
-  async function reconcile() {
+  // Bring each real server in line with the DB: peers of active, unexpired profiles must be present;
+  // peers of revoked/expired profiles must be absent. Diffing against the live interface (not a DB flag)
+  // makes this self-healing after a wg0 restart or reboot. Peers unknown to the DB are never touched.
+  // Runs are serialized (a call made after a profile change always sees that change).
+  let chain = Promise.resolve();
+  const reconcile = () => (chain = chain.then(doReconcile, doReconcile));
+  async function doReconcile() {
     const now = nowIso();
-    const toAdd = db.prepare("SELECT * FROM vpn_profiles WHERE status = 'active' AND expires_at > ? AND peer_applied = 0").all(now);
-    const toRemove = db.prepare("SELECT * FROM vpn_profiles WHERE (status = 'revoked' OR expires_at <= ?) AND peer_applied = 1").all(now);
-    for (const p of toAdd) {
-      try {
-        await applier.addPeer(serverOf(p.server_id), peerOf(p));
-        db.prepare('UPDATE vpn_profiles SET peer_applied = 1 WHERE id = ?').run(p.id);
-      } catch (e) { console.error(`[vpn] add peer ${p.id}:`, e.message); }
-    }
-    for (const p of toRemove) {
-      try {
-        await applier.removePeer(serverOf(p.server_id), { publicKey: p.public_key });
-        db.prepare('UPDATE vpn_profiles SET peer_applied = 0 WHERE id = ?').run(p.id);
-      } catch (e) { console.error(`[vpn] remove peer ${p.id}:`, e.message); }
+    for (const server of db.prepare('SELECT * FROM vpn_servers').all()) {
+      const profiles = db.prepare('SELECT * FROM vpn_profiles WHERE server_id = ?').all(server.id);
+      let live;
+      try { live = await applier.listPeers(server); } catch (e) { console.error(`[vpn] list peers on ${server.name}:`, e.message); continue; }
+      for (const p of profiles) {
+        const wanted = p.status === 'active' && p.expires_at > now;
+        try {
+          if (wanted && !live.has(p.public_key)) await applier.addPeer(server, peerOf(p));
+          else if (!wanted && live.has(p.public_key)) await applier.removePeer(server, { publicKey: p.public_key });
+        } catch (e) { console.error(`[vpn] peer ${p.id} on ${server.name}:`, e.message); }
+      }
     }
   }
 

@@ -53,12 +53,23 @@ cd backend && npm test                      # e2e-тесты всего сцен
 
 scrypt-хэши паролей; JWT (15 мин) + ротируемые refresh-токены; zod-валидация всех входов; rate-limit (login: по IP+email, только неудачные; auth: по IP; общий API); helmet; CORS по whitelist; секреты только из env; в production без `JWT_SECRET`/`DATA_ENCRYPTION_KEY` сервис не стартует; ответы reset/forgot не раскрывают существование email.
 
-## Подключение реального WireGuard-сервера
+## Реальный WireGuard-сервер (VPS, Ubuntu/Debian)
 
-1. На VPS: установить WireGuard, `wg0` с подсетью (напр. `10.8.0.1/24`), включить `ip_forward` и NAT (masquerade).
-2. `WG_SERVER_PUBLIC_KEY` (из `wg show wg0 public-key`), `WG_ENDPOINT=<домен>:51820`, `WG_SUBNET`, `WG_APPLY_MODE=wg`; процесс API нужны права на `wg set` (CAP_NET_ADMIN).
-3. Сид сервера выполняется только на пустой БД; дополнительные серверы — строки в `vpn_servers`.
-4. Peers, добавленные через `wg set`, живут до перезапуска интерфейса: для персистентности `reconcile()` нужно вызывать при старте (уже делается) — все активные профили с `peer_applied=0` переприменятся; при перезапуске `wg0` сбросьте флаг (`UPDATE vpn_profiles SET peer_applied=0`).
+Всё на одной машине: API + сайт + WireGuard. Из корня репозитория, под root на чистом VPS:
+
+```bash
+# положите свой SSH-ключ в ~/.ssh/authorized_keys ДО запуска (иначе усиление SSH пропустится)
+DOMAIN=vpn.example.com sudo -E bash deploy/setup-vps.sh      # DOMAIN необязателен; без него — без HTTPS
+```
+
+Скрипт идемпотентен и делает: `wg0` (10.8.0.1/24, UDP 51820, ключи сервера только в `/etc/wireguard`, root 0600); `ip_forward`; nftables (`deploy/nftables.conf.tpl`: input drop, SSH с лимитом на IP, NAT, клиентам запрещены частные сети и связь друг с другом, MSS clamp); fail2ban; усиление SSH (`deploy/sshd-hardening.conf`; применяется только если найден `authorized_keys`, проверяется `sshd -t`); пользователь `kvn`, systemd-сервис `deploy/kvn.service` (только `CAP_NET_ADMIN`, `ProtectSystem=strict`); `/etc/kvn/kvn.env` (root 0600) с новыми секретами и `WG_SERVER_PUBLIC_KEY`; Caddy для HTTPS.
+
+**Peer создаётся** при выдаче профиля: API генерирует пару ключей и preshared key, берёт свободный IP из пула (10.8.0.2…), сохраняет ключи в БД (зашифрованно) и делает `wg set wg0 peer <pub> preshared-key <tmp-file 0600> allowed-ips 10.8.0.X/32`.
+**Peer удаляется** (`wg set wg0 peer <pub> remove`) при отзыве, отмене подписки (`POST /api/subscription/cancel`) и по истечении срока. Это делает `reconcile()`: раз в `VPN_RECONCILE_INTERVAL_SEC` (30 с) и сразу после каждого изменения он сверяет желаемое состояние БД с живым `wg show wg0 peers`. Поэтому после перезапуска `wg0` или перезагрузки VPS пиры возвращаются сами. Peers, которых нет в БД, не трогаются.
+
+## Проверка реального соединения
+
+`sudo bash deploy/lab/run.sh` — стенд из трёх network namespace (клиент / VPS / «интернет») с настоящими WireGuard-туннелями, NAT и боевым набором правил nftables; API работает в `WG_APPLY_MODE=wg`. Проверяет: регистрация → оплата → `.conf` → импорт в WireGuard-клиент (`wg-quick up`) → handshake → смена внешнего IP → доступ в сеть → отзыв / отмена / истечение → доступ пропал; перезапуск `wg0`; безопасность. Нужны root, `iproute2`, `wireguard-tools`, `nftables`, `iputils-ping` и `wireguard-go` (если в ядре нет WireGuard).
 
 ## Production-чеклист
 

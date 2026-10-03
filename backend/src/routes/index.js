@@ -53,6 +53,12 @@ export function createRouter({ auth, subscriptions, payments, vpn, limiters }) {
     });
   });
 
+  r.post('/subscription/cancel', guard, wrap(async (req, res) => {
+    subscriptions.cancel(req.user.id);
+    await vpn.reconcile(); // peers are removed from the server before we answer
+    res.json({ subscription: subscriptions.status(req.user.id) });
+  }));
+
   // ---- payments ----
   r.post('/payments', guard, validate(z.object({ planId: z.string().max(32).default(DEFAULT_PLAN_ID) })), wrap(async (req, res) => {
     const result = await payments.create(req.user.id, req.body.planId);

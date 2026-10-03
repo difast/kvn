@@ -1,0 +1,29 @@
+[Unit]
+Description=KVN API (VPN control plane)
+After=network-online.target wg-quick@wg0.service
+Wants=network-online.target wg-quick@wg0.service
+
+[Service]
+User=kvn
+Group=kvn
+WorkingDirectory=/opt/kvn/backend
+# Root-owned 0600 file: systemd reads it, the unprivileged process cannot open it.
+EnvironmentFile=/etc/kvn/kvn.env
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=3
+
+# The API only needs to run `wg set/show` (netlink) — nothing else.
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/kvn
+StateDirectory=kvn
+ProtectKernelModules=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

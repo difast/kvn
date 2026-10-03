@@ -148,3 +148,14 @@ test('brute-force protection on login', async () => {
   assert.deepEqual(codes.slice(0, 5), [401, 401, 401, 401, 401]);
   assert.equal(codes[6], 429);
 });
+
+test('cancelling the subscription revokes VPN access immediately', async () => {
+  const u = await call('/auth/register', { method: 'POST', body: { email: 'c@example.com', password: 'cancel-password' } });
+  const t = u.data.accessToken;
+  await call('/payments', { method: 'POST', body: {}, token: t });
+  const pr = (await call('/vpn/profiles', { method: 'POST', body: {}, token: t })).data.profile;
+  assert.equal((await call(`/vpn/profiles/${pr.id}/config`, { token: t })).res.status, 200);
+  const c = await call('/subscription/cancel', { method: 'POST', token: t });
+  assert.equal(c.data.subscription.active, false);
+  assert.equal((await call(`/vpn/profiles/${pr.id}/config`, { token: t })).res.status, 402);
+});

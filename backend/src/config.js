@@ -67,6 +67,7 @@ export const config = {
   vpn: {
     // 'none' = only record peers in the DB (dev); 'wg' = run `wg set` on this host.
     maxProfilesPerUser: num(env.VPN_MAX_PROFILES_PER_USER, 1),
+    reconcileIntervalSec: num(env.VPN_RECONCILE_INTERVAL_SEC, 30),
     applyMode: env.WG_APPLY_MODE || 'none',
     seedServer: {
       name: env.WG_SERVER_NAME || 'Server 1',

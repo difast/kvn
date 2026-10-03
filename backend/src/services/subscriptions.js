@@ -21,6 +21,14 @@ export function createSubscriptionService({ db, onExtended }) {
       return { status: active ? 'active' : end ? 'expired' : 'none', active, expiresAt: end || null };
     },
 
+    // Ends access immediately (no refund logic in the MVP). Returns the new end timestamp.
+    cancel(userId) {
+      const now = iso(Date.now());
+      db.prepare('UPDATE subscriptions SET ends_at = ? WHERE user_id = ? AND ends_at > ?').run(now, userId, now);
+      onExtended?.(userId, now); // profiles expire together with the subscription
+      return now;
+    },
+
     endsAt: currentEnd,
   };
 }
