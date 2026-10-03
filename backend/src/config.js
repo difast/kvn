@@ -44,6 +44,8 @@ export const config = {
   refreshTokenTtlDays: num(env.REFRESH_TOKEN_TTL_DAYS, 30),
   corsOrigins: (env.CORS_ORIGINS || 'http://localhost:8080').split(',').map((s) => s.trim()).filter(Boolean),
   trustProxy: env.TRUST_PROXY === undefined ? (isProd ? 1 : false) : Number(env.TRUST_PROXY) || env.TRUST_PROXY === 'true',
+  serveFrontend: env.SERVE_FRONTEND !== 'false',
+  frontendDir: env.FRONTEND_DIR || path.resolve(import.meta.dirname, '../../frontend'),
   frontendUrl: env.FRONTEND_URL || 'http://localhost:8080',
   rateLimit: {
     enabled: env.RATE_LIMIT_DISABLED !== 'true',

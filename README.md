@@ -36,6 +36,11 @@ cd backend && npm test                      # e2e-тесты всего сцен
 | GET | `/vpn/profiles/:id/config` | `.conf` (attachment). Единственное место, где отдаётся приватный ключ клиента |
 | POST | `/vpn/profiles/:id/revoke` | отозвать |
 
+## Деплой одним сервисом (например, Timeweb Apps)
+
+Бэкенд сам отдаёт `frontend/` (отключить: `SERVE_FRONTEND=false`, другая папка: `FRONTEND_DIR`). Сайт и API на одном домене, CORS не нужен, `frontend/config.js` менять не нужно.
+Корень проекта — корень репозитория (чтобы папка `frontend/` была рядом). Сборка: `npm ci --prefix backend`, запуск: `npm start --prefix backend`, проверка: `/api/health`.
+
 ## Архитектура
 
 - **Платежи** (`services/payments/`): интерфейс провайдера `createPayment` / `parseWebhook`. Сейчас `mock` (мгновенный успех, запрещён в production без `ALLOW_MOCK_PAYMENTS=true`). `sber.js` — заготовка с описанием шагов. Активация подписки живёт в `settle()`, идемпотентна и от провайдера не зависит: Сбер вернёт `pending` + `redirectUrl`, фронтенд уже умеет редирект, а подтверждение придёт на вебхук.

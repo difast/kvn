@@ -1,4 +1,6 @@
 import express from 'express';
+import path from 'node:path';
+import fs from 'node:fs';
 import helmet from 'helmet';
 import cors from 'cors';
 import { config as defaultConfig } from './config.js';
@@ -22,13 +24,25 @@ export function createApp({ config = defaultConfig, db = openDb(config.dbPath), 
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
-  app.use(helmet());
+  app.use(helmet({
+    // Plain-HTTP dev must not be force-upgraded to https.
+    contentSecurityPolicy: { directives: { upgradeInsecureRequests: config.isProd ? [] : null } },
+  }));
   // Bearer-token API: no cookies, so no credentialed CORS needed.
   app.use(cors({ origin: config.corsOrigins, exposedHeaders: ['Content-Disposition'] }));
   app.use(express.json({ limit: '10kb' }));
 
   const limiters = createLimiters(config);
   app.use('/api', limiters.api, createRouter({ auth, subscriptions, payments, vpn, limiters }));
+
+  // Optional: serve the static frontend from the same process (single-service deploys).
+  const webDir = path.resolve(config.frontendDir);
+  if (config.serveFrontend && fs.existsSync(path.join(webDir, 'index.html'))) {
+    app.use((req, res, next) => (req.path === '/serve.js' ? res.status(404).end() : next()));
+    app.use(express.static(webDir, { index: 'index.html', extensions: ['html'], dotfiles: 'ignore' }));
+  } else if (config.serveFrontend) {
+    console.warn(`[web] FRONTEND_DIR ${webDir} not found: serving API only`);
+  }
 
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'not_found', 'Не найдено')));
   // eslint-disable-next-line no-unused-vars
