@@ -20,7 +20,7 @@ PUBLIC_IP="$(curl -4fsS --max-time 5 https://api.ipify.org || true)"
 echo "==> packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq wireguard wireguard-tools nftables fail2ban unattended-upgrades curl ca-certificates rsync openssl
+apt-get install -y -qq wireguard wireguard-tools nftables fail2ban unattended-upgrades curl ca-certificates rsync openssl python3
 if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 22 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y -qq nodejs
@@ -54,6 +54,19 @@ net.ipv4.tcp_syncookies = 1
 CONF
 sysctl --system >/dev/null
 
+# Layout: with a DOMAIN the website and VLESS share tcp/443 ("self-steal": Xray owns :443 and passes ordinary visitors to
+# Caddy on 127.0.0.1:8444). An already-installed server keeps whatever layout its Xray config has (see move-to-443.sh).
+XRAY_DIR=/usr/local/etc/xray
+SELF_STEAL=0
+if [ -n "${DOMAIN:-}" ]; then
+  if [ -f "$XRAY_DIR/config.json" ]; then
+    [ "$(python3 -c "import json;print([i['port'] for i in json.load(open('$XRAY_DIR/config.json'))['inbounds'] if i.get('tag')=='vless-in'][0])" 2>/dev/null)" = 443 ] && SELF_STEAL=1
+  else
+    SELF_STEAL=1
+  fi
+fi
+if [ "$SELF_STEAL" = 1 ]; then XRAY_PORT=443; REALITY_DEST=127.0.0.1:8444; REALITY_SNI="$DOMAIN"; fi
+
 echo "==> firewall (nftables), WAN=$WAN_IF"
 sed -e "s#@WAN_IF@#$WAN_IF#g" -e "s#@SSH_PORT@#$SSH_PORT#g" -e "s#@WG_PORT@#$WG_PORT#g" -e "s#@XRAY_PORT@#$XRAY_PORT#g" -e "s#@VPN_SUBNET@#$VPN_SUBNET#g" \
   "$HERE/nftables.conf.tpl" > /etc/nftables.conf
@@ -61,13 +74,23 @@ nft -c -f /etc/nftables.conf                       # validate before applying
 nft -f /etc/nftables.conf
 systemctl enable nftables
 
+if [ -n "${DOMAIN:-}" ]; then
+  echo "==> Caddy (HTTPS for $DOMAIN, self-steal layout: $SELF_STEAL)"
+  apt-get install -y -qq caddy
+  if [ "$SELF_STEAL" = 1 ]; then
+    sed "s#@DOMAIN@#$DOMAIN#g" "$HERE/Caddyfile.selfsteal.tpl" > /etc/caddy/Caddyfile
+  else
+    printf '%s {\n  encode gzip\n  reverse_proxy 127.0.0.1:3000\n}\n' "$DOMAIN" > /etc/caddy/Caddyfile
+  fi
+  systemctl reload caddy || systemctl restart caddy
+fi
+
 echo "==> Xray (VLESS + Reality on tcp/$XRAY_PORT)"
 if ! command -v xray >/dev/null; then
   curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh -o /tmp/xray-install.sh
   bash /tmp/xray-install.sh install
   rm -f /tmp/xray-install.sh
 fi
-XRAY_DIR=/usr/local/etc/xray
 install -d -m 755 "$XRAY_DIR"
 if [ ! -f "$XRAY_DIR/reality.pub" ]; then
   # Reality imitates a real TLS 1.3 + h2 site; one with a big certificate chain breaks it (www.microsoft.com sent 8 KB here).
@@ -75,7 +98,7 @@ if [ ! -f "$XRAY_DIR/reality.pub" ]; then
     REALITY_DEST="$(bash "$HERE/pick-reality-dest.sh" --best 2>/dev/null)" || REALITY_DEST="www.apple.com:443"
     echo "Reality dest picked: $REALITY_DEST"
   fi
-  REALITY_SNI="${REALITY_DEST%:*}"
+  [ "$SELF_STEAL" = 1 ] || REALITY_SNI="${REALITY_DEST%:*}"
   KEYS="$(xray x25519)"
   # Output labels differ between Xray versions ("Public key:" / "Password (PublicKey):").
   R_PRIV="$(printf '%s\n' "$KEYS" | sed -n 's/^PrivateKey: *//p;s/^Private key: *//p' | head -1)"
@@ -167,13 +190,6 @@ install -m 644 "$HERE/kvn.service" /etc/systemd/system/kvn.service
 systemctl daemon-reload
 systemctl enable --now kvn
 systemctl restart kvn
-
-if [ -n "${DOMAIN:-}" ]; then
-  echo "==> Caddy (HTTPS for $DOMAIN)"
-  apt-get install -y -qq caddy
-  printf '%s {\n  encode gzip\n  reverse_proxy 127.0.0.1:3000\n}\n' "$DOMAIN" > /etc/caddy/Caddyfile
-  systemctl reload caddy || systemctl restart caddy
-fi
 
 echo
 echo "Done. Server public key: $(cat /etc/wireguard/server.pub)"
